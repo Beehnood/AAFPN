@@ -25,7 +25,40 @@ model User {
   passwordHash String
   phone        String?
   role         Role     @default(MEMBER)
+  createdEvents Event[] @relation("EventCreator")
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// =========== EVENT ===========
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  title       String
+  slug        String      @unique
+  description String      @db.Text
+
+  imageUrl    String?
+  location    String?
+
+  startAt     DateTime
+  endAt       DateTime?
+
+  capacity    Int?
+
+  status      EventStatus @default(DRAFT)
+
+  createdById String
+
+  createdBy User @relation("EventCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

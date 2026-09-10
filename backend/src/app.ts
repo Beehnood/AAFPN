@@ -3,7 +3,7 @@ import cors from "cors";
 import express from "express";
 import { prisma } from "./config/prisma.js";
 import authRoutes from "./routes/auth.routes.js";
-
+import eventRoutes from "./routes/event.routes.js";
 const app = express();
 
 app.use(helmet());
@@ -31,5 +31,7 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/events", eventRoutes);
+
 
 export default app;
