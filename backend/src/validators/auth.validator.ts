@@ -19,7 +19,6 @@ export const registerSchema = z.object({
 
   phone: z.string().trim().optional(),
 
-  IsActive: z.boolean(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -33,3 +32,9 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
+
+export const googleLoginSchema = z.object({
+  credential: z.string().min(1, "Le token Google est obligatoire"),
+});
+
+export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;

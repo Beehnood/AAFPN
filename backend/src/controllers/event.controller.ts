@@ -27,6 +27,9 @@ export const getEvents = async (
         endAt: true,
         capacity: true,
         status: true,
+        calendarSystem: true,
+        calendarDateLabel: true,
+        sourceUrl: true,
         createdAt: true,
       },
     });
@@ -79,6 +82,9 @@ export const getEventBySlug = async (
         endAt: true,
         capacity: true,
         status: true,
+        calendarSystem: true,
+        calendarDateLabel: true,
+        sourceUrl: true,
         createdAt: true,
       },
     });
@@ -142,6 +148,9 @@ export const createEvent = async (
       endAt,
       capacity,
       status,
+      calendarSystem,
+      calendarDateLabel,
+      sourceUrl,
     } = result.data;
 
     const baseSlug = slugify(title, {
@@ -173,6 +182,9 @@ export const createEvent = async (
         endAt,
         capacity,
         status,
+        calendarSystem,
+        calendarDateLabel,
+        sourceUrl,
 
         createdById: req.user.id,
       },
@@ -311,6 +323,18 @@ export const updateEvent = async (
 
         ...(data.status !== undefined && {
           status: data.status,
+        }),
+
+        ...(data.calendarSystem !== undefined && {
+          calendarSystem: data.calendarSystem,
+        }),
+
+        ...(data.calendarDateLabel !== undefined && {
+          calendarDateLabel: data.calendarDateLabel,
+        }),
+
+        ...(data.sourceUrl !== undefined && {
+          sourceUrl: data.sourceUrl,
         }),
       },
     });

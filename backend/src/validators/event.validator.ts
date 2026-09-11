@@ -16,6 +16,9 @@ export const createEventSchema = z
     endAt: z.coerce.date().optional(),
     capacity: z.coerce.number().int().positive().optional(),
     status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED"]).default("DRAFT"),
+    calendarSystem: z.enum(["GREGORIAN", "IMPERIAL"]).default("GREGORIAN"),
+    calendarDateLabel: z.string().trim().optional(),
+    sourceUrl: z.string().url("URL de source invalide").optional(),
   })
   .refine(
     (data) => !data.endAt || data.endAt > data.startAt,
@@ -60,4 +63,10 @@ export const createEventSchema = z
   status: z
     .enum(["DRAFT", "PUBLISHED", "CANCELLED"])
     .optional(),
+
+  calendarSystem: z.enum(["GREGORIAN", "IMPERIAL"]).optional(),
+
+  calendarDateLabel: z.string().trim().optional(),
+
+  sourceUrl: z.string().url("URL de source invalide").optional(),
 });

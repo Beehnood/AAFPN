@@ -77,6 +77,8 @@ export const UserScalarFieldEnum = {
   lastName: 'lastName',
   email: 'email',
   passwordHash: 'passwordHash',
+  googleId: 'googleId',
+  avatarUrl: 'avatarUrl',
   phone: 'phone',
   role: 'role',
   isActive: 'isActive',
@@ -98,6 +100,9 @@ export const EventScalarFieldEnum = {
   endAt: 'endAt',
   capacity: 'capacity',
   status: 'status',
+  calendarSystem: 'calendarSystem',
+  calendarDateLabel: 'calendarDateLabel',
+  sourceUrl: 'sourceUrl',
   createdById: 'createdById',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

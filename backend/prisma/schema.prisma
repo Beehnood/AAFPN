@@ -18,15 +18,23 @@ enum Role {
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
+
   firstName    String
   lastName     String
   email        String   @unique
-  passwordHash String
+
+  passwordHash String?
+
+  googleId     String?  @unique
+  avatarUrl    String?
+
   phone        String?
+
   role         Role     @default(MEMBER)
-  createdEvents Event[] @relation("EventCreator")
   isActive     Boolean  @default(true)
+
+  createdEvents Event[] @relation("EventCreator")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -39,21 +47,30 @@ enum EventStatus {
   CANCELLED
 }
 
+enum CalendarSystem {
+  GREGORIAN
+  IMPERIAL
+}
+
 model Event {
-  id          String      @id @default(uuid())
+  id          String @id @default(uuid())
   title       String
-  slug        String      @unique
-  description String      @db.Text
+  slug        String @unique
+  description String @db.Text
 
-  imageUrl    String?
-  location    String?
+  imageUrl String?
+  location String?
 
-  startAt     DateTime
-  endAt       DateTime?
+  startAt DateTime
+  endAt   DateTime?
 
-  capacity    Int?
+  capacity Int?
 
-  status      EventStatus @default(DRAFT)
+  status EventStatus @default(DRAFT)
+
+  calendarSystem    CalendarSystem @default(GREGORIAN)
+  calendarDateLabel String?
+  sourceUrl         String?
 
   createdById String
 

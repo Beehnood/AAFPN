@@ -1,11 +1,16 @@
 import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
 
 import { prisma } from "../config/prisma.js";
-import { loginSchema, registerSchema } from "../validators/auth.validator.js";
-import { success } from "zod";
 import type { AuthRequest } from "../middlewares/auth.middleware.js";
+import {
+  googleLoginSchema,
+  loginSchema,
+  registerSchema,
+} from "../validators/auth.validator.js";
+
 // ============= REGISTER ===========
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -27,7 +32,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const existingUser = await prisma.user.findUnique({
       where: {
         email,
-      },
+      }
     });
 
     if (existingUser) {
@@ -79,9 +84,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 //============== LOGIN =================
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  console.log("REQ:", typeof req);
-  console.log("RES:", typeof res);
-  console.log("RES.STATUS:", typeof res?.status);
   try {
     const result = loginSchema.safeParse(req.body);
 
@@ -109,6 +111,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         message: "Email ou mot de passe incorrect",
       });
 
+      return;
+    }
+
+    if (!user.passwordHash) {
+      res.status(401).json({
+        success: false,
+        message: "Ce compte utilise la connexion Google",
+      });
       return;
     }
 
@@ -217,6 +227,175 @@ export const me = async (
     });
   } catch (error) {
     console.error("Me error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Erreur interne du serveur",
+    });
+  }
+};
+
+// ================= GOOGLE LOGIN =================
+
+export const googleLogin = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const result = googleLoginSchema.safeParse(req.body);
+
+    if (!result.success) {
+      res.status(400).json({
+        success: false,
+        message: "Token Google manquant ou invalide",
+      });
+      return;
+    }
+
+    const googleClientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!googleClientId) {
+      throw new Error("GOOGLE_CLIENT_ID est manquant dans .env");
+    }
+
+    const googleClient = new OAuth2Client(googleClientId);
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: result.data.credential,
+      audience: googleClientId,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      res.status(401).json({
+        success: false,
+        message: "Token Google invalide",
+      });
+      return;
+    }
+
+    const {
+      sub,
+      email,
+      email_verified,
+      given_name,
+      family_name,
+      picture,
+      hd,
+    } = payload;
+
+    if (!email || !email_verified) {
+      res.status(401).json({
+        success: false,
+        message: "L'adresse email Google n'est pas vérifiée",
+      });
+      return;
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    let user = await prisma.user.findUnique({
+      where: {
+        googleId: sub,
+      },
+    });
+
+    if (!user) {
+      const existingUser = await prisma.user.findUnique({
+        where: {
+          email: normalizedEmail,
+        },
+      });
+
+      if (existingUser) {
+        // Google est considéré comme autoritaire pour Gmail
+        // ou Google Workspace.
+        const googleIsAuthoritative =
+          normalizedEmail.endsWith("@gmail.com") ||
+          Boolean(hd);
+
+        if (!googleIsAuthoritative) {
+          res.status(409).json({
+            success: false,
+            message:
+              "Un compte existe déjà avec cette adresse. Connectez-vous d'abord avec votre mot de passe.",
+          });
+          return;
+        }
+
+        user = await prisma.user.update({
+          where: {
+            id: existingUser.id,
+          },
+          data: {
+            googleId: sub,
+            avatarUrl: picture ?? existingUser.avatarUrl,
+          },
+        });
+      } else {
+        user = await prisma.user.create({
+          data: {
+            googleId: sub,
+            email: normalizedEmail,
+
+            firstName:
+              given_name?.trim() || "Utilisateur",
+
+            lastName:
+              family_name?.trim() || "",
+
+            avatarUrl: picture ?? null,
+            passwordHash: null,
+            isActive: true,
+          },
+        });
+      }
+    }
+
+    if (!user.isActive) {
+      res.status(403).json({
+        success: false,
+        message: "Ce compte est désactivé",
+      });
+      return;
+    }
+
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      throw new Error("JWT_SECRET est manquant dans .env");
+    }
+
+    const token = jwt.sign(
+      {
+        sub: user.id,
+        role: user.role,
+      },
+      jwtSecret,
+      {
+        expiresIn: "7d",
+      },
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Connexion Google réussie",
+
+      token,
+
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+        role: user.role,
+        isActive: user.isActive,
+      },
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
 
     res.status(500).json({
       success: false,

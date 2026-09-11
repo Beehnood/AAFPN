@@ -24,3 +24,11 @@ export const EventStatus = {
 } as const
 
 export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus]
+
+
+export const CalendarSystem = {
+  GREGORIAN: 'GREGORIAN',
+  IMPERIAL: 'IMPERIAL'
+} as const
+
+export type CalendarSystem = (typeof CalendarSystem)[keyof typeof CalendarSystem]
