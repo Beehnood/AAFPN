@@ -81,9 +81,9 @@ export default function EventsSection() {
       id="events"
       aria-labelledby="events-heading"
       aria-busy={loading}
-      className="relative overflow-hidden bg-white px-5 py-16 sm:px-8 md:py-24"
+      className="relative overflow-hidden bg-white px-5 pt-8 pb-20 sm:px-16 md:pb-28"
     >
-      <div className="mx-auto max-w-4xl">
+      <div className="relative mx-auto max-w-5xl">
         <h2
           id="events-heading"
           className="mb-10 text-center text-2xl font-bold uppercase tracking-wide text-[#0077c8] md:mb-12 md:text-3xl"
@@ -120,18 +120,18 @@ export default function EventsSection() {
             </div>
 
             {events.length > ITEMS_PER_PAGE && (
-              <nav aria-label="Pagination des événements" className="mt-8 flex items-center justify-center gap-4 sm:gap-6">
+              <nav aria-label="Pagination des événements" className="mt-8 flex items-center justify-center gap-4 md:absolute md:top-1/2 md:-left-14 md:mt-0 md:-translate-y-1/2 md:flex-col md:gap-1">
                 <button
                   type="button"
                   onClick={previousEvents}
                   disabled={startIndex === 0}
                   aria-label="Événements précédents"
                   aria-controls="events-list"
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full border border-[#0077c8]/30 text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30"
                 >
-                  <span aria-hidden="true" className="text-2xl">←</span>
+                  <span aria-hidden="true" className="text-3xl">⌃</span>
                 </button>
-                <p role="status" aria-atomic="true" className="text-center text-sm tabular-nums text-gray-600">
+                <p role="status" aria-atomic="true" className="text-center text-sm tabular-nums text-gray-600 md:sr-only">
                   {startIndex + 1}–{Math.min(startIndex + ITEMS_PER_PAGE, events.length)} sur {events.length} événements
                 </p>
                 <button
@@ -140,9 +140,9 @@ export default function EventsSection() {
                   disabled={startIndex + ITEMS_PER_PAGE >= events.length}
                   aria-label="Événements suivants"
                   aria-controls="events-list"
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full border border-[#0077c8]/30 text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30"
                 >
-                  <span aria-hidden="true" className="text-2xl">→</span>
+                  <span aria-hidden="true" className="text-3xl">⌄</span>
                 </button>
               </nav>
             )}
@@ -162,8 +162,8 @@ function EventCard({ event }: EventCardProps) {
   const hasImage = Boolean(event.imageUrl && event.imageUrl !== failedImageUrl);
 
   return (
-    <article className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/25 hover:shadow-lg sm:flex-row transition-all duration-300">
-      <div className="flex h-48 shrink-0 items-center justify-center overflow-hidden bg-sky-50 sm:h-auto sm:min-h-60 sm:w-[38%]">
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-md bg-slate-50/60 shadow-[0_4px_8px_#0077c810] hover:shadow-lg sm:flex-row transition-all duration-300">
+      <div className="flex h-48 shrink-0 items-center justify-center overflow-hidden bg-sky-50 sm:h-auto sm:min-h-52 sm:w-[45%]">
         <img
           src={hasImage ? event.imageUrl! : "/images/logo-couleur.png"}
           alt=""

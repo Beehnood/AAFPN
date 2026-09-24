@@ -5,7 +5,7 @@ html{
 }
 
 body{
-    merge: 0;
+    margin: 0;
     min-width: 320px;
     min-height: 100vh;
     font-family: Arial, Helvetica, sans-serif ;
@@ -15,3 +15,56 @@ body{
     min-height: 100vh;
 }
 
+.vitrine-section {
+    padding: 32px 24px 88px;
+}
+
+.vitrine-heading {
+    position: relative;
+    margin-bottom: 48px;
+    color: #0085ce;
+    text-align: center;
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    font-weight: 600;
+}
+
+.vitrine-content {
+    max-width: 1100px;
+    margin-inline: auto;
+}
+
+.vitrine-watermark {
+    position: absolute;
+    inset: 0;
+    width: 70%;
+    max-width: 540px;
+    height: 100%;
+    margin: auto;
+    object-fit: contain;
+    opacity: 0.055;
+    pointer-events: none;
+}
+
+.contact-input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: rgb(222 228 232 / 65%);
+    padding: 14px;
+    color: #263746;
+    font: inherit;
+}
+
+.contact-input:focus-visible {
+    outline: 2px solid #0077c8;
+    outline-offset: 2px;
+}
+
+@media (min-width: 768px) {
+    .vitrine-section { padding: 36px 64px 96px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+}

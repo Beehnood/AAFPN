@@ -39,7 +39,7 @@ export default function SidebarNav() {
             flex h-12 w-12
             items-center justify-center
             rounded-full
-            border border-white
+            border border-gray-300
             bg-white/5
             backdrop-blur-sm
             transition-all duration-2500
@@ -50,7 +50,7 @@ export default function SidebarNav() {
           <img
             src="/images/icons8-menu.svg"
             alt="Menu"
-            className="h-16 w-16 object-contain md:h-9 md:w-9"
+            className="h-16 w-16 object-contain md:h-9 md:w-9 "
           />
         </button>
       )}
@@ -67,9 +67,9 @@ export default function SidebarNav() {
             items-center
             overflow-hidden
             rounded-[58px]
-            border border-white/60
+            border border-gray-300/60
             bg-white/5
-            text-white
+            text-gray-300
             shadow-lg
             backdrop-blur-sm
             transition-all duration-2500
@@ -123,7 +123,7 @@ export default function SidebarNav() {
                   text-base
                   font-light
                   leading-tight
-                  text-white
+                  text-gray-300
                   transition-all
                   duration-400
                   hover:scale-105

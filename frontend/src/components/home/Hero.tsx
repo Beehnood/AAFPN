@@ -6,7 +6,7 @@ function Hero() {
   return (
     <section
     id="home"
-    className='relative min-h-screen  w-full overflow-hidden'
+    className='relative w-full overflow-hidden'
     >
     {/* photo de Nice */}
 
@@ -29,22 +29,22 @@ function Hero() {
 
     <div
       className='
-      relative z-10 flex min-h-screen
+      relative z-10 flex min-h-[480px] h-[65vw] max-h-[880px]
       items-center justify-center
       px-5
       '
     >
-   <div className="flex w-full max-w-4xl flex-col items-center">
+   <div className="flex w-full max-w-4xl -translate-y-8 flex-col items-center">
           {/* LOGO */}
           <img
             src="/images/logo-blanc.png"
             alt="Association d'Amitié Franco-Persane de Nice"
             className="
               mb-3
-              w-32
+              w-24
               object-contain
-              md:w-40
-              lg:w-44
+              md:w-28
+              lg:w-32
             "
           />
 
@@ -56,7 +56,7 @@ function Hero() {
               w-[92%]
               max-w-195
               object-contain
-              md:w-[70%]
+              md:w-[60%]
             "
           />
         </div>
