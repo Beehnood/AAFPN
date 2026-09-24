@@ -1,0 +1,281 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>AAFPN — Guide pédagogique</title><style>@page { size: A4; margin: 17mm 17mm 18mm; } * { box-sizing: border-box; } body { margin:0; font-family: Arial, sans-serif; color:#243446; font-size:10.2pt; line-height:1.48; } section { break-before:page; } section:first-child { break-before:auto; } h1 { color:#0077c8; font-size:22pt; line-height:1.2; margin:0 0 18px; border-bottom:2px solid #cce4f5; padding-bottom:12px; } h2 { font-size:12.5pt; color:#145883; margin:17px 0 5px; } p { margin:7px 0; } pre { white-space:pre-wrap; overflow-wrap:anywhere; font-family:Menlo,monospace; font-size:8pt; line-height:1.42; background:#f0f5f9; border-left:3px solid #0077c8; padding:10px; margin:10px 0; } table { border-collapse:collapse; width:100%; font-size:9pt; margin:12px 0; } th,td { padding:6px 8px; border-bottom:1px solid #dbe5ee; text-align:left; } th { background:#e7f2fa; } .subtitle { font-size:16pt; color:#52687b; margin:25px 0; } .small { color:#64748b; font-size:9pt; }</style><body><section><h1>AAFPN — Comprendre les corrections</h1><div class="subtitle">Guide pédagogique • React, TypeScript, Tailwind et Git</div><p>Du premier problème visible dans cette conversation à la publication sur main. Version du 23 septembre 2026, fondée sur le code local et le commit c345c80.</p><h2>Ce que ce document couvre</h2><p>Les problèmes de présentation de EventsSection, leurs corrections, la disparition des boutons de pagination, puis le renommage de branche et la publication Git. Le composant EventsSection est expliqué bloc par bloc et reproduit intégralement en annexe avec ses numéros de ligne.</p><h2>Une limite importante</h2><p>Le premier problème documenté ici est la demande de vérification et de réorganisation de EventsSection. Les anciens commits du backend existent, mais leurs échanges de débogage ne figurent pas dans cette conversation : ce guide ne leur invente pas de bugs ni de solutions. Hero, SidebarNav et les services étaient déjà présents lorsque cette intervention a commencé ; leur rôle est expliqué sans attribuer leur création à cette intervention.</p><h2>Parcours de lecture</h2><p>1. Les problèmes et solutions<br>2. Le circuit des données<br>3. Les états React<br>4. Chargement, filtre et nettoyage<br>5. Pagination et boutons<br>6. Structure et accessibilité<br>7. Cartes et images<br>8. Styles et dates<br>9. Autres fichiers<br>10. Git et vérifications<br>11. Exercices et pistes restantes<br>12. Code intégral commenté par renvoi aux chapitres</p></section><section><h1>1. Les problèmes et leurs solutions</h1><h2>Cartes trop serrées sur mobile</h2><p>Avant : les cartes restaient en ligne, avec une image occupant 42 % de la largeur. Sur un téléphone, le texte recevait peu de place. Solution : flex-col empile l’image et les informations ; sm:flex-row rétablit la disposition horizontale sur un écran plus large. min-w-0 et wrap-anywhere permettent au texte long de se réduire et de revenir à la ligne.</p><h2>Navigation incohérente</h2><p>Avant : deux flèches verticales placées à gauche, dont une sur fond jaune avec un padding différent. Solution : deux boutons ronds bleus de mêmes dimensions sous les cartes, avec flèches gauche/droite et compteur. Les états désactivé, survol et focus clavier sont explicités.</p><h2>Image de remplacement introuvable</h2><p>Avant : /images/events-placeholder.jpg était utilisé, mais ce fichier était absent. Solution : le logo existant sert de remplacement. Une erreur de chargement de l’image distante déclenche également ce remplacement.</p><h2>Dernière page répétant un événement</h2><p>Avant : la limite était events.length - ITEMS_PER_PAGE. Avec cinq événements et deux par page, les indices de début devenaient 0, 2, 3 : le quatrième événement apparaissait deux fois. La limite est désormais le début de la dernière page : 0, 2, 4. Le dernier écran ne contient alors que le cinquième événement.</p><h2>Chargement et démontage</h2><p>Un indicateur active a été ajouté pour ignorer le résultat d’une requête devenue obsolète après le nettoyage de l’effet. Le titre et le conteneur sont conservés pour les états de chargement, d’erreur et de liste vide.</p></section><section><h1>2. Comment les données arrivent</h1><pre>App → HomePage → EventsSection
+                    ↓ getEvents()
+                 instance Axios
+                    ↓ GET /events
+                  API backend
+                    ↓ response.data.events
+              filtre → tri → slice → cartes</pre><h2>La configuration</h2><p>frontend/src/config.ts lit VITE_API_BASE_URL. Si elle est absente ou vide, la valeur utilisée est http://localhost:3000/api. replace(/\/$/, "") enlève un slash final pour faciliter l’assemblage des chemins. API_ORIGIN enlève le suffixe /api, mais EventsSection ne s’en sert pas.</p><h2>Le service HTTP</h2><p>api.ts crée une instance Axios avec cette baseURL. event.services.ts appelle api.get("/events") : avec la configuration par défaut, la requête vise http://localhost:3000/api/events. await attend la réponse ; la fonction renvoie une Promise&lt;Event[]&gt;.</p><h2>La validation actuellement effectuée</h2><p>Array.isArray(response.data.events) vérifie que events est un tableau. Sinon, le service déclenche une erreur reprise dans le catch du composant. Le type générique Axios décrit la réponse pour TypeScript ; il ne valide pas chaque champ à l’exécution. Une date ou un statut mal formé peut donc encore arriver dans le composant.</p><h2>Séparer les responsabilités</h2><p>Le service s’occupe de récupérer les données ; EventsSection décide lesquelles montrer et comment les présenter ; EventCard présente un événement. Ce découpage évite de mélanger l’adresse du serveur, la pagination et le contenu d’une carte.</p></section><section><h1>3. Imports, composant et états</h1><pre>import { useEffect, useState } from &quot;react&quot;;
+import { getEvents } from &quot;../../services/event.services.ts&quot;;
+import type { Event } from &quot;../../types/event.ts&quot;;
+const ITEMS_PER_PAGE = 2;</pre><p>useState conserve une valeur entre les rendus et déclenche un nouveau rendu quand elle change. useEffect relie le composant à une opération extérieure, ici une requête HTTP. import type ne fournit qu’un type TypeScript : il ne crée pas de valeur JavaScript. ITEMS_PER_PAGE est une constante partagée par l’affichage et les calculs.</p><pre>const [events, setEvents] = useState&lt;Event[]&gt;([]);
+const [startIndex, setStartIndex] = useState(0);
+const [loading, setLoading] = useState(true);
+const [error, setError] = useState&lt;string | null&gt;(null);</pre><p>events contient les événements retenus, et non toutes les données brutes. Event[] signifie « tableau d’événements ». startIndex indique le premier élément de la page courante ; les indices commencent à zéro. loading vaut true avant la fin du premier chargement. error vaut null lorsqu’aucune erreur ne doit être affichée, sinon une chaîne lisible.</p><h2>Pourquoi deux valeurs entre crochets ?</h2><p>La déstructuration sépare la valeur et sa fonction de mise à jour. setEvents(liste) demande à React de refaire le rendu avec cette liste. On ne modifie pas directement events avec une affectation. Les calculs visibleEvents et hasImage restent des valeurs dérivées : ils sont recalculés, sans état supplémentaire inutile.</p><h2>export default function EventsSection()</h2><p>Cette fonction est le composant exporté par défaut du fichier. HomePage peut l’importer et l’utiliser avec &lt;EventsSection /&gt;. Son return décrit l’interface en JSX ; les expressions entre accolades sont évaluées en JavaScript.</p></section><section><h1>4. Chargement et cycle de vie</h1><pre>useEffect(() =&gt; {
+  let active = true;
+  async function loadEvents() { /* try / catch / finally */ }
+  void loadEvents();
+  return () =&gt; { active = false; };
+}, []);</pre><p>Le tableau de dépendances vide signifie que cet effet ne dépend d’aucune valeur réactive du composant. Il s’installe au montage. En développement, StrictMode peut provoquer un cycle supplémentaire installation/nettoyage pour détecter les effets fragiles. Il ne faut donc pas supposer qu’une seule requête réseau sera toujours envoyée.</p><h2>try : le chemin normal</h2><p>setLoading(true) et setError(null) préparent l’état de chargement. await getEvents() récupère la liste. new Date() capture l’heure de référence du filtrage. filter garde uniquement les événements publiés dont la fin — ou, faute de fin, le début — n’est pas passée. sort les classe par début croissant.</p><pre>event.status === &quot;PUBLISHED&quot; &amp;&amp;
+new Date(event.endAt ?? event.startAt) &gt;= now</pre><p>=== compare exactement le statut ; && exige les deux conditions. ?? prend startAt uniquement lorsque endAt est null ou undefined. Un événement sans endAt disparaît dès que son début est passé. Un événement en cours avec une fin future reste affiché. Le filtrage n’est pas réévalué automatiquement à mesure que l’heure avance.</p><h2>catch, finally et nettoyage</h2><p>catch intercepte les erreurs du chargement et de la préparation des données, les journalise, puis affiche un message simple. finally s’exécute après succès ou échec et termine le chargement. Les mises à jour finales sont protégées par if (active). Le nettoyage met active à false : les résultats tardifs ne mettent plus à jour cet effet. Il n’annule pas la requête HTTP.</p><p>void loadEvents() lance la fonction sans attendre sa Promise dans le callback de useEffect. Le mot void n’intercepte pas une erreur ; ici le try/catch interne assure la gestion.</p></section><section><h1>5. Pagination : comprendre les calculs</h1><pre>const visibleEvents = events.slice(
+  startIndex, startIndex + ITEMS_PER_PAGE
+);</pre><p>slice extrait une portion sans modifier events. Le premier indice est inclus, le second exclu. Avec startIndex = 2 et une taille de 2, les indices 2 et 3 sont visibles, donc les troisième et quatrième événements.</p><h2>Reculer sans indice négatif</h2><pre>setStartIndex(previous =&gt; Math.max(previous - 2, 0));</pre><p>La fonction de mise à jour reçoit la dernière valeur de l’état. Math.max impose le minimum 0. Depuis 2 on revient à 0 ; depuis 0 on reste à 0. Dans le fichier, le nombre 2 est remplacé par ITEMS_PER_PAGE.</p><h2>Avancer sans chevaucher les pages</h2><pre>lastStart = Math.max((Math.ceil(total / size) - 1) * size, 0)
+nextStart = Math.min(previous + size, lastStart)</pre><p>Ces deux lignes sont une reformulation pédagogique de la formule du code. Math.ceil arrondit le nombre de pages vers le haut ; on retire 1 pour obtenir l’indice de la dernière page, puis on multiplie par la taille. Pour cinq événements : ceil(5/2) = 3 pages, donc dernier début = (3 - 1) × 2 = 4.</p><table><tr><th>Total</th><th>Indices de début</th><th>Éléments affichés</th></tr><tr><td>2</td><td>0</td><td>1–2</td></tr><tr><td>3</td><td>0, 2</td><td>1–2 puis 3</td></tr><tr><td>5</td><td>0, 2, 4</td><td>1–2 puis 3–4 puis 5</td></tr></table><h2>Pourquoi les boutons étaient invisibles</h2><pre>events.length &gt; ITEMS_PER_PAGE &amp;&amp; (...)</pre><p>Les boutons existent uniquement si la liste filtrée contient plus de deux événements. Deux cartes visibles ne nécessitent pas une deuxième page. Les brouillons, annulations et événements terminés ne comptent pas. La proposition ITEMS_PER_PAGE = 1 a été expliquée, mais pas appliquée : le fichier actuel conserve 2.</p><p>Précédent est désactivé à startIndex === 0. Suivant est désactivé lorsque startIndex + ITEMS_PER_PAGE >= events.length. Le compteur utilise startIndex + 1 pour passer d’un indice technique à une position compréhensible.</p></section><section><h1>6. Le rendu et l’accessibilité</h1><h2>Un cadre commun à tous les états</h2><p>section porte id="events" : le lien #events du menu peut l’atteindre. aria-labelledby="events-heading" donne au bloc le titre du h2 comme nom accessible. aria-busy={loading} indique qu’il est en cours de mise à jour. Le conteneur centré limite la largeur des cartes.</p><pre>loading ? chargement
+  : error ? erreur
+  : events.length === 0 ? listeVide
+  : contenu</pre><p>Les ternaires imbriqués sélectionnent un seul état. Le chargement est prioritaire, puis l’erreur, puis la liste vide. &lt;&gt;…&lt;/&gt; est un fragment React : il regroupe plusieurs éléments sans ajouter de div dans le DOM.</p><h2>Le filigrane et la liste</h2><p>Le logo décoratif est en position absolute dans un parent relative. Son opacité de 5 % le rend discret. pointer-events-none empêche de bloquer les clics. alt="" et aria-hidden="true" le retirent de la lecture utile. visibleEvents.map crée une EventCard par événement ; key={event.id} permet à React de suivre l’identité des cartes.</p><h2>Les commandes</h2><p>nav possède un nom accessible. type="button" empêche une soumission de formulaire involontaire. onClick reçoit la fonction à exécuter au clic ; on n’écrit pas previousEvents() dans cette prop, car cela l’appellerait pendant le rendu. disabled bloque réellement l’interaction aux limites.</p><p>aria-label nomme les flèches, tandis que aria-hidden masque leur symbole décoratif aux lecteurs d’écran. aria-controls="events-list" relie chaque commande à la liste concernée. focus-visible ajoute une bordure de focus visible lors de la navigation au clavier.</p><h2>Les annonces</h2><p>role="status" convient au chargement et au compteur pour une annonce non urgente. aria-atomic="true" demande de lire le compteur entier lorsqu’il change. role="alert" sert au message d’erreur. Ces attributs améliorent l’information accessible ; ils ne remplacent pas un test réel au clavier et au lecteur d’écran.</p></section><section><h1>7. EventCard et les images</h1><pre>type EventCardProps = { event: Event };
+function EventCard({ event }: EventCardProps) { ... }</pre><p>Les props sont les données transmises par le parent. { event } extrait l’événement de l’objet reçu. EventCard ne récupère pas de données réseau : elle reçoit un événement déjà choisi par EventsSection.</p><pre>const [failedImageUrl, setFailedImageUrl] =
+  useState&lt;string | null&gt;(null);
+const hasImage = Boolean(
+  event.imageUrl &amp;&amp; event.imageUrl !== failedImageUrl
+);</pre><p>failedImageUrl mémorise l’adresse ayant échoué. hasImage vaut true seulement si une adresse est fournie et n’a pas déjà échoué. Boolean convertit le résultat de l’expression en vrai ou faux. Mémoriser l’adresse plutôt qu’un simple booléen autorise une nouvelle URL à être essayée.</p><h2>src, onError et le logo</h2><p>src choisit l’image de l’événement si hasImage est vrai, sinon /images/logo-couleur.png. L’opérateur ! après imageUrl est une assertion TypeScript de non-nullité ; il ne vérifie rien à l’exécution. Ici, la branche hasImage repose sur la présence de l’adresse.</p><p>onError mémorise l’URL en échec. Un nouveau rendu affiche alors le logo. Le gestionnaire devient undefined pour ce logo : son éventuel échec ne déclenche pas une boucle de remplacement. loading="lazy" demande au navigateur de différer le chargement des images éloignées de la zone visible.</p><h2>Texte alternatif et limites</h2><p>alt="" traite l’image comme illustrative, le titre étant déjà affiché à côté. Si une affiche contient des informations importantes absentes du texte, il faudra prévoir une description appropriée dans les données. Les chemins relatifs d’images reçus du backend ne sont pas automatiquement préfixés avec API_ORIGIN dans ce composant.</p><h2>Titre, description et détails</h2><p>h3 affiche event.title. La description n’est rendue que si elle est non vide. dl contient des paires dt/dd : nom de l’information et valeur. time fournit startAt comme valeur lisible par les machines. calendarDateLabel est préféré au formatage standard lorsqu’il est non vide. location?.trim() enlève les espaces si le lieu existe ; || affiche « À préciser » en cas de résultat vide.</p></section><section><h1>8. Les styles et les dates</h1><h2>Lire les classes Tailwind</h2><table><tr><th>Classes</th><th>Rôle dans le composant</th></tr><tr><td>relative / absolute / inset-0</td><td>Positionner le filigrane dans son parent.</td></tr><tr><td>mx-auto / max-w-4xl</td><td>Centrer et limiter la largeur du contenu.</td></tr><tr><td>px-5 / py-16 / p-5</td><td>Espacement intérieur horizontal, vertical ou global.</td></tr><tr><td>flex-col / sm:flex-row</td><td>Empiler sur petit écran ; aligner dès le palier sm.</td></tr><tr><td>sm:w-[38%] / shrink-0</td><td>Réserver la largeur de l’image sans la comprimer.</td></tr><tr><td>min-w-0 / flex-1</td><td>Autoriser le texte à rétrécir et occuper l’espace restant.</td></tr><tr><td>object-cover / object-contain</td><td>Remplir en recadrant / montrer l’image entière.</td></tr><tr><td>whitespace-pre-line</td><td>Conserver les retours à la ligne de la description.</td></tr><tr><td>wrap-anywhere</td><td>Couper si nécessaire un mot ou une URL trop longue.</td></tr><tr><td>grid-cols-[auto_minmax(0,1fr)]</td><td>Colonne des libellés puis colonne flexible des valeurs.</td></tr><tr><td>rounded-xl / overflow-hidden</td><td>Arrondir la carte et contenir son image.</td></tr><tr><td>bg-white/25 / hover:shadow-lg</td><td>Fond blanc à 25 % et ombre au survol dans le code actuel.</td></tr></table><p>Les préfixes sm: et md: sont des conditions de largeur minimale. Sans personnalisation des paliers, ils correspondent respectivement à 40rem et 48rem. Le style de base s’applique d’abord, puis les variantes sur les écrans plus larges.</p><h2>Trois fonctions de formatage</h2><p>formatDate construit un Intl.DateTimeFormat en français avec jour, mois en lettres et année. formatTime choisit heure et minute sur deux chiffres. Les deux imposent Europe/Paris pour que l’affichage ne dépende pas du fuseau du navigateur. formatTimeRange affiche seulement le début sans endAt, sinon « début – fin ».</p><p>Une date invalide peut faire échouer Intl.DateTimeFormat pendant le rendu : ce cas n’est pas couvert par le catch du chargement. Une plage traversant plusieurs jours n’affiche actuellement que les heures, sans la date de fin. Ce sont des améliorations possibles, non réalisées ici.</p></section><section><h1>9. Les autres fichiers du frontend</h1><h2>App.tsx et HomePage.tsx</h2><p>App affiche HomePage. HomePage assemble Hero puis EventsSection dans un fragment. La fonction de HomePage s’appelle actuellement App en interne : son export par défaut permet de l’importer sous le nom HomePage, mais renommer la fonction améliorerait la lisibilité. Ce renommage n’a pas été effectué.</p><h2>Hero.tsx</h2><p>Le hero utilise une section relative de hauteur minimale égale à l’écran, une photo en absolute avec object-cover, un filtre bleu, puis un contenu au-dessus avec z-10. Le logo et le texte visuel sont centrés. SidebarNav est inséré dans cette section, mais son positionnement fixed l’attache à la fenêtre.</p><h2>SidebarNav.tsx</h2><p>menuOpen est un booléen React. Quand il est faux, le bouton d’ouverture est visible ; quand il est vrai, le nav avec les liens et le bouton de fermeture est rendu. navigation.map crée les liens, key utilise leur href, et closeMenu referme le menu au clic. Les liens #about, #courses et #contact nécessitent des sections correspondantes ; HomePage ne compose actuellement que Hero et EventsSection.</p><h2>Types et CSS : observations non corrigées</h2><p>EventStatus contient « PUBLISSHED », alors que le filtre attend « PUBLISHED ». Pour le moment, Event.status est déclaré string, donc cette faute dans l’union ne bloque pas le filtre à la compilation. Une correction cohérente serait de corriger l’union puis de typer status avec EventStatus, après vérification du contrat backend.</p><p>index.css contient merge: 0 dans body, vraisemblablement à la place de margin: 0. merge n’est pas une propriété CSS valide. Cette anomalie n’a pas été corrigée dans la séquence décrite. Les outils peuvent réussir malgré certaines déclarations CSS sans effet.</p><h2>Ce qui a été enregistré</h2><p>Le commit contient 22 fichiers modifiés ou ajoutés : composants, services, types, configuration, images et dépendances. Tous ces fichiers ont été inclus à la demande de publication de l’ensemble des développements frontend ; ils n’ont pas tous été écrits pendant la correction de EventsSection.</p></section><section><h1>10. Git : de la branche à main</h1><h2>Situation de départ</h2><p>La branche active était develop/vitrin-page. Elle et main pointaient initialement vers 27911c9. Le dossier de travail contenait des fichiers modifiés et de nouveaux fichiers frontend non suivis. Le dépôt distant origin correspond à github.com/Beehnood/AAFPN.</p><pre>git fetch origin
+git branch -m develop/hero-nav-events
+git add frontend
+git commit -m &quot;feat(frontend): ajouter le hero, la navigation et les événements&quot;
+git push -u origin develop/hero-nav-events</pre><p>fetch met à jour les références distantes sans fusionner. branch -m renomme la branche locale courante. add prépare les fichiers ; commit enregistre un instantané, ici c345c80. push publie les commits ; -u relie la branche locale à sa branche distante. Le renommage local ne supprime pas automatiquement l’ancienne branche distante develop/vitrin-page, qui n’a pas été supprimée.</p><pre>git switch main
+git pull --ff-only origin main
+git merge --ff-only develop/hero-nav-events
+git push origin main
+git pull --ff-only origin main
+git status --short --branch</pre><p>switch change la branche active. Le premier pull actualise main avant intégration. merge --ff-only avance main vers le commit de développement si l’historique le permet, sans créer de commit de fusion. Il échoue en cas de divergence. Le push publie main ; le dernier pull confirme sa synchronisation. Aucun push forcé n’a été utilisé.</p><h2>Vérifications réellement exécutées</h2><p>npm run build a exécuté tsc -b puis vite build avec succès. npm run lint a exécuté ESLint avec succès. Le contrôle git diff --check avait signalé des espaces en fin de ligne dans App.tsx et une ligne vide finale dans index.css ; ils n’ont pas bloqué ces commandes. Aucun test automatisé de navigation ni contrôle visuel complet n’a été réalisé.</p><p>À la fin de la publication, main était synchronisée avec origin/main et le dossier de travail était propre. Le frontend sur le port 5173 et le backend sur le port 3000 fonctionnaient déjà ; le navigateur a été ouvert sur http://localhost:5173. Un push Git n’est pas, à lui seul, un déploiement du site en production.</p></section><section><h1>11. S’entraîner et diagnostiquer</h1><h2>Exercice 1 — Une seule carte par page</h2><p>Dans une branche de travail, remplacer ITEMS_PER_PAGE = 2 par 1. Prévision : avec trois événements admissibles, les indices sont 0, 1, 2 et le compteur progresse de 1–1 à 3–3. Les boutons restent absents s’il n’y a qu’un événement. Revenir à 2 après l’essai si c’est le choix de présentation souhaité.</p><h2>Exercice 2 — Un nombre impair</h2><p>Avec cinq événements publiés et non terminés, vérifier les pages 1–2, 3–4, puis 5. Revenir deux fois en arrière. Chaque événement doit apparaître une fois dans le parcours avant ; aucun bouton ne doit dépasser les limites.</p><h2>Exercice 3 — Image en échec</h2><p>Utiliser sur des données de test une adresse d’image inexistante. Le logo doit apparaître après l’échec réseau ; le texte reste lisible. Tester aussi imageUrl absent, null et vide. Vérifier ensuite un titre très long et une description sur plusieurs lignes.</p><h2>Exercice 4 — Comprendre un écran vide</h2><p>Distinguer le message de chargement, le message d’erreur et « Aucun événement à venir ». Dans les outils réseau du navigateur, contrôler la requête /events, son statut HTTP et la forme de sa réponse. Puis vérifier PUBLISHED, endAt et startAt. Une API qui renvoie des données ne garantit pas qu’elles passent le filtre.</p><h2>Exercice 5 — Vérifier l’interface</h2><p>Tester une largeur de 320 px, une tablette et un grand écran. Les cartes doivent passer de verticales à horizontales. Utiliser Tab puis Entrée sur les boutons ; vérifier le focus visible. Examiner la dernière page et le compteur. Ces essais sont proposés pour apprendre : ils ne sont pas présentés comme déjà effectués.</p><h2>Améliorations envisageables</h2><p>Valider chaque donnée API, gérer les dates invalides et les événements sur plusieurs jours, annuler réellement les requêtes si nécessaire, normaliser les URL d’images, ajouter un bouton Réessayer et vérifier le contraste du menu fixe sur fond clair. Ces pistes ne font pas partie des corrections livrées.</p><h2>Lire le code intégral</h2><p>L’annexe suivante reproduit le fichier local EventsSection.tsx au moment de la création de ce guide. Les numéros de ligne sont des repères de lecture, pas du code à copier. Les longues lignes sont repliées uniquement pour l’impression.</p></section><section><h1>Annexe — EventsSection.tsx (1)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre>  1  import { useEffect, useState } from &quot;react&quot;;
+  2  
+  3  import { getEvents } from &quot;../../services/event.services.ts&quot;;
+  4  import type { Event } from &quot;../../types/event.ts&quot;;
+  5  
+  6  const ITEMS_PER_PAGE = 2;
+  7  
+  8  export default function EventsSection() {
+  9    const [events, setEvents] = useState&lt;Event[]&gt;([]);
+ 10    const [startIndex, setStartIndex] = useState(0);
+ 11  
+ 12    const [loading, setLoading] = useState(true);
+ 13    const [error, setError] = useState&lt;string | null&gt;(null);
+ 14  
+ 15    useEffect(() =&gt; {
+ 16      let active = true;
+ 17  
+ 18      async function loadEvents() {
+ 19        try {
+ 20          setLoading(true);
+ 21          setError(null);
+ 22  
+ 23          const data = await getEvents();
+ 24  
+ 25          const now = new Date();
+ 26  
+ 27          const upcomingEvents = data
+ 28            .filter((event) =&gt; {
+ 29              return (
+ 30                event.status === &quot;PUBLISHED&quot; &amp;&amp;
+ 31                new Date(event.endAt ?? event.startAt) &gt;= now
+ 32              );
+ 33            })
+ 34            .sort(
+ 35              (a, b) =&gt;
+ 36                new Date(a.startAt).getTime() -
+ 37                new Date(b.startAt).getTime()
+ 38            );
+ 39  
+ 40          if (active) setEvents(upcomingEvents);
+ 41        } catch (error) {
+ 42          console.error(&quot;Erreur événements :&quot;, error);
+ 43  
+ 44          if (active) {
+ 45            setError(&quot;Impossible de charger les événements pour le moment.&quot;);
+ 46          }
+ 47        } finally {
+ 48          if (active) setLoading(false);</pre></section><section><h1>Annexe — EventsSection.tsx (2)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre> 49        }
+ 50      }
+ 51  
+ 52      void loadEvents();
+ 53  
+ 54      return () =&gt; {
+ 55        active = false;
+ 56      };
+ 57    }, []);
+ 58  
+ 59    const visibleEvents = events.slice(
+ 60      startIndex,
+ 61      startIndex + ITEMS_PER_PAGE
+ 62    );
+ 63  
+ 64    function previousEvents() {
+ 65      setStartIndex((previous) =&gt;
+ 66        Math.max(previous - ITEMS_PER_PAGE, 0)
+ 67      );
+ 68    }
+ 69  
+ 70    function nextEvents() {
+ 71      setStartIndex((previous) =&gt;
+ 72        Math.min(
+ 73          previous + ITEMS_PER_PAGE,
+ 74          Math.max((Math.ceil(events.length / ITEMS_PER_PAGE) - 1) * ITEMS_PER_PAGE, 0)
+ 75        )
+ 76      );
+ 77    }
+ 78  
+ 79    return (
+ 80      &lt;section
+ 81        id=&quot;events&quot;
+ 82        aria-labelledby=&quot;events-heading&quot;
+ 83        aria-busy={loading}
+ 84        className=&quot;relative overflow-hidden bg-white px-5 py-16 sm:px-8 md:py-24&quot;
+ 85      &gt;
+ 86        &lt;div className=&quot;mx-auto max-w-4xl&quot;&gt;
+ 87          &lt;h2
+ 88            id=&quot;events-heading&quot;
+ 89            className=&quot;mb-10 text-center text-2xl font-bold uppercase tracking-wide 
+     text-[#0077c8] md:mb-12 md:text-3xl&quot;
+ 90          &gt;
+ 91            Nos événements
+ 92          &lt;/h2&gt;
+ 93  
+ 94          {loading ? (
+ 95            &lt;p role=&quot;status&quot; className=&quot;flex min-h-64 items-center justify-center text-center</pre></section><section><h1>Annexe — EventsSection.tsx (3)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre>      text-[#0077c8]&quot;&gt;
+ 96              Chargement des événements…
+ 97            &lt;/p&gt;
+ 98          ) : error ? (
+ 99            &lt;p role=&quot;alert&quot; className=&quot;flex min-h-64 items-center justify-center text-center 
+     text-red-600&quot;&gt;
+100              {error}
+101            &lt;/p&gt;
+102          ) : events.length === 0 ? (
+103            &lt;p className=&quot;flex min-h-64 items-center justify-center text-center text-
+     gray-500&quot;&gt;
+104              Aucun événement à venir pour le moment.
+105            &lt;/p&gt;
+106          ) : (
+107            &lt;&gt;
+108              &lt;div className=&quot;relative&quot;&gt;
+109                &lt;img
+110                  src=&quot;/images/logo-couleur.png&quot;
+111                  alt=&quot;&quot;
+112                  aria-hidden=&quot;true&quot;
+113                  className=&quot;pointer-events-none absolute inset-0 m-auto max-h-full w-4/5 
+     object-contain opacity-[0.05]&quot;
+114                /&gt;
+115                &lt;div id=&quot;events-list&quot; className=&quot;relative grid gap-6&quot;&gt;
+116                  {visibleEvents.map((event) =&gt; (
+117                    &lt;EventCard key={event.id} event={event} /&gt;
+118                  ))}
+119                &lt;/div&gt;
+120              &lt;/div&gt;
+121  
+122              {events.length &gt; ITEMS_PER_PAGE &amp;&amp; (
+123                &lt;nav aria-label=&quot;Pagination des événements&quot; className=&quot;mt-8 flex items-center
+      justify-center gap-4 sm:gap-6&quot;&gt;
+124                  &lt;button
+125                    type=&quot;button&quot;
+126                    onClick={previousEvents}
+127                    disabled={startIndex === 0}
+128                    aria-label=&quot;Événements précédents&quot;
+129                    aria-controls=&quot;events-list&quot;
+130                    className=&quot;flex size-11 shrink-0 items-center justify-center rounded-full
+      border border-[#0077c8]/30 text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] 
+     enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-
+     visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30&quot;
+131                  &gt;
+132                    &lt;span aria-hidden=&quot;true&quot; className=&quot;text-2xl&quot;&gt;←&lt;/span&gt;
+133                  &lt;/button&gt;
+134                  &lt;p role=&quot;status&quot; aria-atomic=&quot;true&quot; className=&quot;text-center text-sm tabular-
+     nums text-gray-600&quot;&gt;</pre></section><section><h1>Annexe — EventsSection.tsx (4)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre>135                    {startIndex + 1}–{Math.min(startIndex + ITEMS_PER_PAGE, events.length)} 
+     sur {events.length} événements
+136                  &lt;/p&gt;
+137                  &lt;button
+138                    type=&quot;button&quot;
+139                    onClick={nextEvents}
+140                    disabled={startIndex + ITEMS_PER_PAGE &gt;= events.length}
+141                    aria-label=&quot;Événements suivants&quot;
+142                    aria-controls=&quot;events-list&quot;
+143                    className=&quot;flex size-11 shrink-0 items-center justify-center rounded-full
+      border border-[#0077c8]/30 text-[#0077c8] transition-colors enabled:hover:bg-[#0077c8] 
+     enabled:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-
+     visible:outline-[#0077c8] disabled:cursor-not-allowed disabled:opacity-30&quot;
+144                  &gt;
+145                    &lt;span aria-hidden=&quot;true&quot; className=&quot;text-2xl&quot;&gt;→&lt;/span&gt;
+146                  &lt;/button&gt;
+147                &lt;/nav&gt;
+148              )}
+149            &lt;/&gt;
+150          )}
+151        &lt;/div&gt;
+152      &lt;/section&gt;
+153    );
+154  }
+155  
+156  type EventCardProps = {
+157    event: Event;
+158  };
+159  
+160  function EventCard({ event }: EventCardProps) {
+161    const [failedImageUrl, setFailedImageUrl] = useState&lt;string | null&gt;(null);
+162    const hasImage = Boolean(event.imageUrl &amp;&amp; event.imageUrl !== failedImageUrl);
+163  
+164    return (
+165      &lt;article className=&quot;flex min-w-0 flex-col overflow-hidden rounded-xl border border-
+     gray-200 bg-white/25 hover:shadow-lg sm:flex-row transition-all duration-300&quot;&gt;
+166        &lt;div className=&quot;flex h-48 shrink-0 items-center justify-center overflow-hidden bg-
+     sky-50 sm:h-auto sm:min-h-60 sm:w-[38%]&quot;&gt;
+167          &lt;img
+168            src={hasImage ? event.imageUrl! : &quot;/images/logo-couleur.png&quot;}
+169            alt=&quot;&quot;
+170            loading=&quot;lazy&quot;
+171            onError={hasImage ? () =&gt; setFailedImageUrl(event.imageUrl!) : undefined}
+172            className={hasImage ? &quot;h-full w-full object-cover&quot; : &quot;h-32 w-32 object-contain 
+     p-3&quot;}
+173          /&gt;
+174        &lt;/div&gt;
+175  </pre></section><section><h1>Annexe — EventsSection.tsx (5)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre>176        &lt;div className=&quot;flex min-w-0 flex-1 flex-col justify-center p-5 sm:p-6 md:p-7&quot;&gt;
+177          &lt;h3 className=&quot;mb-3 text-xl font-semibold leading-snug wrap-anywhere text-
+     gray-800&quot;&gt;
+178            {event.title}
+179          &lt;/h3&gt;
+180          {event.description &amp;&amp; (
+181            &lt;p className=&quot;mb-5 whitespace-pre-line text-sm leading-relaxed wrap-anywhere 
+     text-gray-600&quot;&gt;
+182              {event.description}
+183            &lt;/p&gt;
+184          )}
+185          &lt;dl className=&quot;grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 text-sm leading-
+     relaxed&quot;&gt;
+186            &lt;dt className=&quot;font-semibold text-gray-700&quot;&gt;Date :&lt;/dt&gt;
+187            &lt;dd className=&quot;wrap-anywhere text-gray-600&quot;&gt;
+188              &lt;time dateTime={event.startAt}&gt;{event.calendarDateLabel || 
+     formatDate(event.startAt)}&lt;/time&gt;
+189            &lt;/dd&gt;
+190            &lt;dt className=&quot;font-semibold text-gray-700&quot;&gt;Horaire :&lt;/dt&gt;
+191            &lt;dd className=&quot;text-gray-600&quot;&gt;{formatTimeRange(event.startAt, event.endAt)}&lt;/dd&gt;
+192            &lt;dt className=&quot;font-semibold text-gray-700&quot;&gt;Lieu :&lt;/dt&gt;
+193            &lt;dd className=&quot;wrap-anywhere text-gray-600&quot;&gt;{event.location?.trim() || &quot;À 
+     préciser&quot;}&lt;/dd&gt;
+194          &lt;/dl&gt;
+195        &lt;/div&gt;
+196      &lt;/article&gt;
+197    );
+198  }
+199  
+200  function formatDate(date: string) {
+201    return new Intl.DateTimeFormat(&quot;fr-FR&quot;, {
+202      day: &quot;numeric&quot;,
+203      month: &quot;long&quot;,
+204      year: &quot;numeric&quot;,
+205      timeZone: &quot;Europe/Paris&quot;,
+206    }).format(new Date(date));
+207  }
+208  
+209  function formatTime(date: string) {
+210    return new Intl.DateTimeFormat(&quot;fr-FR&quot;, {
+211      hour: &quot;2-digit&quot;,
+212      minute: &quot;2-digit&quot;,
+213      timeZone: &quot;Europe/Paris&quot;,
+214    }).format(new Date(date));
+215  }
+216  
+217  function formatTimeRange(
+218    startAt: string,</pre></section><section><h1>Annexe — EventsSection.tsx (6)</h1><div class="small">Source intégrale • explications dans les chapitres 3 à 8</div><pre>219    endAt: string | null
+220  ) {
+221    if (!endAt) {
+222      return formatTime(startAt);
+223    }
+224  
+225    return `${formatTime(startAt)} – ${formatTime(endAt)}`;
+226  }</pre></section></body></html>

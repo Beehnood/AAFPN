@@ -5,7 +5,8 @@ import {
     getEventBySlug,
     getEvents,
     updateEvent,
-    deleteEvent
+    deleteEvent,
+    getEventsCalendar,
 } from "../controllers/event.controller.js";
 
 
@@ -19,7 +20,9 @@ const router = Router();
 // ===== PUBLIC =====
 
 router.get("/", getEvents);
+router.get("/calendar", getEventsCalendar);
 router.get("/:slug", getEventBySlug);
+
 
 
 // ====== ADMIN ====

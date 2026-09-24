@@ -406,3 +406,67 @@ export const deleteEvent = async (
     });
   }
 };
+
+
+// =============== EVENTS CALENDAR ==================
+
+
+export const getEventsCalendar = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const year = Number(req.query.year);
+
+    if(!year || year < 1900 || year >3000) {
+      res.status(400).json({
+
+        success: false,
+        message: "Année Invalide "
+
+      });
+      return;
+    }
+    const startDate = new Date(`${year}-01-01T00:00:00.000Z`);
+    const endDate = new Date(`${year + 1 }-01-01T00:00:00.000Z`);
+
+    const events = await prisma.event.findMany({
+      where: {
+
+        status: "PUBLISHED",
+        startAt: {
+          gte: startDate,
+          lt: endDate
+
+        },
+      },
+      orderBy: {
+        startAt: "asc",
+      },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        startAt: true,
+        endAt: true,
+        location: true,
+        imageUrl: true,
+        status: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      year,
+      count: events.length,
+      events,
+    });
+  } catch (error) {
+    console.error("Calendar events error:" , error);
+
+    res.status(500).json({
+      message : "Erreur lors de la récupération du calendrier",
+    });
+  }
+
+};
