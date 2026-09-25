@@ -162,7 +162,7 @@ function EventCard({ event }: EventCardProps) {
   const hasImage = Boolean(event.imageUrl && event.imageUrl !== failedImageUrl);
 
   return (
-    <article className="flex min-w-0 flex-col overflow-hidden rounded-md bg-slate-50/60 shadow-[0_4px_8px_#0077c810] hover:shadow-lg sm:flex-row transition-all duration-300">
+    <article className="flex min-w-0 flex-col overflow-hidden rounded-md bg-slate-50/42 shadow-[0_4px_8px_#0077c810] hover:shadow-lg sm:flex-row transition-all duration-300">
       <div className="flex h-48 shrink-0 items-center justify-center overflow-hidden bg-sky-50 sm:h-auto sm:min-h-52 sm:w-[45%]">
         <img
           src={hasImage ? event.imageUrl! : "/images/logo-couleur.png"}
