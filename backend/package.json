@@ -8,7 +8,7 @@
     "generate": "prisma generate",
     "build": "prisma generate && tsc",
     "start": "node dist/server.js",
-    "test": "echo \"Tests à configurer\""
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "keywords": [
     "association",
