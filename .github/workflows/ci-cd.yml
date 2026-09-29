@@ -95,20 +95,16 @@ jobs:
   # DEPLOYMENT
   # =====================================================
   deploy:
-    name: Deploy Production
+    name: Check Production SSH
 
     needs:
       - frontend
       - backend
 
-    # Deployment uniquement après un push sur main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-
-    environment:
-      name: production
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -118,71 +114,25 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/aafpn_key
-
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/aafpn_key
           chmod 600 ~/.ssh/aafpn_key
 
-          ssh-keyscan \
-            -p "$ORACLE_PORT" \
-            "$ORACLE_HOST" \
-            >> ~/.ssh/known_hosts
+          ssh-keyscan -T 10 -p 22 "$ORACLE_HOST" >> ~/.ssh/known_hosts
 
-      - name: Deploy to Oracle Cloud
+      - name: Test Oracle SSH connection
         env:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
           ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
         run: |
           ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
             -i ~/.ssh/aafpn_key \
-            -p "$ORACLE_PORT" \
-            "$ORACLE_USER@$ORACLE_HOST" << 'EOF'
-
-            set -e
-
-            cd /var/www/aafpn
-
-            echo "===== Update repository ====="
-
-            git fetch origin main
-            git reset --hard origin/main
-
-
-            echo "===== Frontend ====="
-
-            cd frontend
-
-            npm ci
-            npm run build
-
-
-            echo "===== Backend ====="
-
-            cd ../backend
-
-            npm ci
-
-            npx prisma generate
-
-            npx prisma migrate deploy
-
-            npm run build
-
-
-            echo "===== Restart API ====="
-
-            sudo systemctl restart aafpn-backend
-
-
-            echo "===== Reload Nginx ====="
-
-            sudo systemctl reload nginx
-
-
-            echo "===== Deployment completed ====="
-
-          EOF
+            -p 22 \
+            "$ORACLE_USER@$ORACLE_HOST" \
+            "echo 'SSH connection successful' && hostname && whoami && pwd"
