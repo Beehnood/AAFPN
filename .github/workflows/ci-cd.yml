@@ -106,6 +106,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
+    env:
+      ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+      ORACLE_USER: ${{ secrets.ORACLE_USER }}
+      ORACLE_SSH_PORT: ${{ secrets.ORACLE_SSH_PORT || vars.ORACLE_SSH_PORT || '22' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -113,26 +118,47 @@ jobs:
       - name: Configure SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
         run: |
+          set -euo pipefail
+          for variable in SSH_PRIVATE_KEY ORACLE_HOST ORACLE_USER; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Configuration SSH manquante : $variable (SSH_PRIVATE_KEY correspond au secret ORACLE_SSH_KEY)."
+              exit 1
+            fi
+          done
+          if [[ ! "$ORACLE_SSH_PORT" =~ ^[0-9]{1,5}$ ]] || (( 10#$ORACLE_SSH_PORT < 1 || 10#$ORACLE_SSH_PORT > 65535 )); then
+            echo "::error::ORACLE_SSH_PORT doit être un nombre entre 1 et 65535."
+            exit 1
+          fi
+          if [[ "$ORACLE_HOST" == *://* || "$ORACLE_HOST" == *[[:space:]]* || "$ORACLE_HOST" == -* ]]; then
+            echo "::error::ORACLE_HOST doit contenir uniquement une adresse IP ou un nom DNS, sans protocole ni espaces."
+            exit 1
+          fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/aafpn_key
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/aafpn_key
           chmod 600 ~/.ssh/aafpn_key
+          if ! ssh-keygen -y -P '' -f ~/.ssh/aafpn_key > /dev/null 2>&1; then
+            echo "::error::ORACLE_SSH_KEY est invalide ou protégée par une phrase secrète. Fournir une clé privée de déploiement utilisable sans interaction."
+            exit 1
+          fi
 
-          ssh-keyscan -T 10 -p 22 "$ORACLE_HOST" >> ~/.ssh/known_hosts
+          if ! ssh-keyscan -T 10 -p "$ORACLE_SSH_PORT" "$ORACLE_HOST" > ~/.ssh/aafpn_known_hosts 2>/dev/null || [[ ! -s ~/.ssh/aafpn_known_hosts ]]; then
+            echo "::error::Impossible de récupérer la clé du serveur SSH. Vérifier ORACLE_HOST, ORACLE_SSH_PORT, le service SSH et les règles réseau Oracle/pare-feu."
+            exit 1
+          fi
+          chmod 600 ~/.ssh/aafpn_known_hosts
 
       - name: Test Oracle SSH connection
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
         run: |
           ssh \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/aafpn_known_hosts" \
+            -o IdentitiesOnly=yes \
             -i ~/.ssh/aafpn_key \
-            -p 22 \
+            -p "$ORACLE_SSH_PORT" \
             "$ORACLE_USER@$ORACLE_HOST" \
             "echo 'SSH connection successful' && hostname && whoami && pwd"
