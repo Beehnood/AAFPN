@@ -6,10 +6,18 @@ on:
       - main
       - develop
       - "feature/**"
+    paths:
+      - "frontend/**"
+      - ".github/workflows/front-ci.yml"
+
   pull_request:
     branches:
       - main
       - develop
+    paths:
+      - "frontend/**"
+      - ".github/workflows/front-ci.yml"
+
   workflow_dispatch:
 
 permissions:
@@ -18,7 +26,7 @@ permissions:
 jobs:
   frontend:
     name: Frontend - Lint & Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     defaults:
@@ -27,10 +35,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -41,6 +49,9 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Tests
+        run: npm test --if-present
 
       - name: Build
         run: npm run build
