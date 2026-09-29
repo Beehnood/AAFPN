@@ -1,0 +1,188 @@
+name: AAFPN CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+
+  pull_request:
+    branches:
+      - main
+      - develop
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  # =====================================================
+  # FRONTEND
+  # =====================================================
+  frontend:
+    name: Frontend Tests & Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests
+        run: npm test --if-present
+
+      - name: Build frontend
+        run: npm run build
+
+
+  # =====================================================
+  # BACKEND
+  # =====================================================
+  backend:
+    name: Backend Tests & Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Tests
+        run: npm test --if-present
+
+      - name: Build backend
+        run: npm run build
+
+
+  # =====================================================
+  # DEPLOYMENT
+  # =====================================================
+  deploy:
+    name: Deploy Production
+
+    needs:
+      - frontend
+      - backend
+
+    # Deployment uniquement après un push sur main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/aafpn_key
+
+          chmod 600 ~/.ssh/aafpn_key
+
+          ssh-keyscan \
+            -p "$ORACLE_PORT" \
+            "$ORACLE_HOST" \
+            >> ~/.ssh/known_hosts
+
+      - name: Deploy to Oracle Cloud
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+        run: |
+          ssh \
+            -i ~/.ssh/aafpn_key \
+            -p "$ORACLE_PORT" \
+            "$ORACLE_USER@$ORACLE_HOST" << 'EOF'
+
+            set -e
+
+            cd /var/www/aafpn
+
+            echo "===== Update repository ====="
+
+            git fetch origin main
+            git reset --hard origin/main
+
+
+            echo "===== Frontend ====="
+
+            cd frontend
+
+            npm ci
+            npm run build
+
+
+            echo "===== Backend ====="
+
+            cd ../backend
+
+            npm ci
+
+            npx prisma generate
+
+            npx prisma migrate deploy
+
+            npm run build
+
+
+            echo "===== Restart API ====="
+
+            sudo systemctl restart aafpn-backend
+
+
+            echo "===== Reload Nginx ====="
+
+            sudo systemctl reload nginx
+
+
+            echo "===== Deployment completed ====="
+
+          EOF
