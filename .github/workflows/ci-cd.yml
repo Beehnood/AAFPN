@@ -93,15 +93,16 @@ jobs:
 
 
   # =====================================================
-  # PRODUCTION SSH CHECK
+  # PRODUCTION DEPLOYMENT
   # =====================================================
   deploy:
-    name: Check Production SSH
+    name: Deploy Production
 
     needs:
       - frontend
       - backend
 
+    # Déploiement uniquement sur main
     if: >
       (github.event_name == 'push' &&
        github.ref == 'refs/heads/main') ||
@@ -109,7 +110,7 @@ jobs:
        github.ref == 'refs/heads/main')
 
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     environment:
       name: production
@@ -121,14 +122,14 @@ jobs:
     steps:
 
       # -------------------------------------------------
-      # Checkout
+      # CHECKOUT
       # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
       # -------------------------------------------------
-      # Vérification des secrets
+      # CHECK SECRETS
       # -------------------------------------------------
       - name: Check deployment variables
         env:
@@ -140,35 +141,29 @@ jobs:
           echo "CHECK DEPLOYMENT VARIABLES"
           echo "======================================"
 
-          if [ -n "$ORACLE_HOST" ]; then
-            echo "ORACLE_HOST: OK"
-          else
+          if [ -z "$ORACLE_HOST" ]; then
             echo "::error::ORACLE_HOST is missing"
             exit 1
           fi
 
-          if [ -n "$ORACLE_USER" ]; then
-            echo "ORACLE_USER: OK"
-          else
+          if [ -z "$ORACLE_USER" ]; then
             echo "::error::ORACLE_USER is missing"
             exit 1
           fi
 
-          if [ -n "$ORACLE_SSH_KEY_B64" ]; then
-            echo "ORACLE_SSH_KEY_B64: OK"
-          else
+          if [ -z "$ORACLE_SSH_KEY_B64" ]; then
             echo "::error::ORACLE_SSH_KEY_B64 is missing"
             exit 1
           fi
 
+          echo "ORACLE_HOST: OK"
+          echo "ORACLE_USER: OK"
+          echo "ORACLE_SSH_KEY_B64: OK"
           echo "SSH PORT: 22"
-          echo "======================================"
-          echo "ALL VARIABLES: OK"
-          echo "======================================"
 
 
       # -------------------------------------------------
-      # Décodage de la clé SSH Base64
+      # CONFIGURE SSH
       # -------------------------------------------------
       - name: Configure SSH
         env:
@@ -193,7 +188,7 @@ jobs:
 
 
       # -------------------------------------------------
-      # Validation de la clé privée
+      # VALIDATE PRIVATE KEY
       # -------------------------------------------------
       - name: Validate SSH private key
         run: |
@@ -203,19 +198,15 @@ jobs:
           echo "VALIDATE SSH PRIVATE KEY"
           echo "======================================"
 
-          if ssh-keygen -y \
+          ssh-keygen -y \
             -f "$HOME/.ssh/aafpn_key" \
-            > /dev/null 2>&1
-          then
-            echo "SSH private key: VALID"
-          else
-            echo "::error::SSH private key is invalid"
-            exit 1
-          fi
+            > /dev/null
+
+          echo "SSH private key: VALID"
 
 
       # -------------------------------------------------
-      # Scan serveur Oracle
+      # REGISTER ORACLE HOST
       # -------------------------------------------------
       - name: Scan Oracle SSH host
         run: |
@@ -242,15 +233,11 @@ jobs:
 
 
       # -------------------------------------------------
-      # Test connexion Oracle
+      # TEST SSH
       # -------------------------------------------------
       - name: Test Oracle SSH connection
         run: |
           set -e
-
-          echo "======================================"
-          echo "TEST ORACLE SSH CONNECTION"
-          echo "======================================"
 
           ssh \
             -o BatchMode=yes \
@@ -261,4 +248,144 @@ jobs:
             -i "$HOME/.ssh/aafpn_key" \
             -p 22 \
             "$ORACLE_USER@$ORACLE_HOST" \
-            "echo 'SSH connection successful' && hostname && whoami && pwd"
+            "echo 'SSH connection successful' && hostname && whoami"
+
+
+      # -------------------------------------------------
+      # DEPLOY APPLICATION
+      # -------------------------------------------------
+      - name: Deploy AAFPN to Oracle Cloud
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/aafpn_key" \
+            -p 22 \
+            "$ORACLE_USER@$ORACLE_HOST" << 'EOF'
+
+            set -e
+
+            echo "======================================"
+            echo "AAFPN PRODUCTION DEPLOYMENT"
+            echo "======================================"
+
+            cd /var/www/aafpn
+
+
+            # ==========================================
+            # UPDATE SOURCE CODE
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "Updating repository"
+            echo "--------------------------------------"
+
+            git fetch origin main
+
+            git checkout main
+
+            git reset --hard origin/main
+
+            echo "Repository updated."
+
+
+            # ==========================================
+            # FRONTEND
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "Building frontend"
+            echo "--------------------------------------"
+
+            cd /var/www/aafpn/frontend
+
+            npm ci
+
+            npm run build
+
+            echo "Frontend build completed."
+
+
+            # ==========================================
+            # BACKEND
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "Building backend"
+            echo "--------------------------------------"
+
+            cd /var/www/aafpn/backend
+
+            npm ci
+
+            echo "Generating Prisma Client..."
+
+            npx prisma generate
+
+            echo "Running database migrations..."
+
+            npx prisma migrate deploy
+
+            echo "Building TypeScript..."
+
+            npm run build
+
+            echo "Backend build completed."
+
+
+            # ==========================================
+            # RESTART BACKEND WITH PM2
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "Restarting backend"
+            echo "--------------------------------------"
+
+            pm2 restart aafpn-backend --update-env
+
+            pm2 save
+
+            echo "Backend restarted."
+
+
+            # ==========================================
+            # NGINX
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "Checking Nginx"
+            echo "--------------------------------------"
+
+            sudo nginx -t
+
+            echo "Reloading Nginx..."
+
+            sudo systemctl reload nginx
+
+
+            # ==========================================
+            # STATUS
+            # ==========================================
+
+            echo ""
+            echo "--------------------------------------"
+            echo "PM2 status"
+            echo "--------------------------------------"
+
+            pm2 status
+
+
+            echo ""
+            echo "======================================"
+            echo "AAFPN DEPLOYMENT SUCCESSFUL"
+            echo "======================================"
+
+          EOF
