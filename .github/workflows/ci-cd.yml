@@ -17,10 +17,11 @@ on:
 permissions:
   contents: read
 
+
 jobs:
 
   # =====================================================
-  # FRONTEND
+  # FRONTEND CI
   # =====================================================
   frontend:
     name: Frontend Tests & Build
@@ -56,7 +57,7 @@ jobs:
 
 
   # =====================================================
-  # BACKEND
+  # BACKEND CI
   # =====================================================
   backend:
     name: Backend Tests & Build
@@ -92,7 +93,7 @@ jobs:
 
 
   # =====================================================
-  # SSH / PRODUCTION CHECK
+  # PRODUCTION SSH CHECK
   # =====================================================
   deploy:
     name: Check Production SSH
@@ -101,8 +102,14 @@ jobs:
       - frontend
       - backend
 
-    # Seulement après un push sur main
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Exécution :
+    # - automatiquement après push sur main
+    # - manuellement avec workflow_dispatch sur main
+    if: >
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/main')
 
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -110,25 +117,29 @@ jobs:
     environment:
       name: production
 
+    env:
+      ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+      ORACLE_USER: ${{ secrets.ORACLE_USER }}
+      ORACLE_PORT: ${{ secrets.ORACLE_PORT || '22' }}
+
     steps:
 
-      # ------------------------------------------
+      # -------------------------------------------------
       # Checkout
-      # ------------------------------------------
+      # -------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ------------------------------------------
-      # Vérifier les secrets
-      # ------------------------------------------
+      # -------------------------------------------------
+      # Vérification des secrets
+      # -------------------------------------------------
       - name: Check deployment variables
         env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
-          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_SSH_KEY_B64: ${{ secrets.ORACLE_SSH_KEY_B64 }}
         run: |
+          set -e
+
           echo "======================================"
           echo "CHECK DEPLOYMENT VARIABLES"
           echo "======================================"
@@ -154,19 +165,21 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$ORACLE_SSH_KEY" ]; then
-            echo "ORACLE_SSH_KEY: OK"
+          if [ -n "$ORACLE_SSH_KEY_B64" ]; then
+            echo "ORACLE_SSH_KEY_B64: OK"
           else
-            echo "::error::ORACLE_SSH_KEY is missing"
+            echo "::error::ORACLE_SSH_KEY_B64 is missing"
             exit 1
           fi
 
-          echo "All deployment variables are available."
+          echo "======================================"
+          echo "ALL VARIABLES: OK"
+          echo "======================================"
 
 
-      # ------------------------------------------
-      # Préparer la clé SSH
-      # ------------------------------------------
+      # -------------------------------------------------
+      # Décodage de la clé SSH Base64
+      # -------------------------------------------------
       - name: Configure SSH
         env:
           ORACLE_SSH_KEY_B64: ${{ secrets.ORACLE_SSH_KEY_B64 }}
@@ -177,86 +190,74 @@ jobs:
           echo "CONFIGURE SSH"
           echo "======================================"
 
-          mkdir -p ~/.ssh
-
-          chmod 700 ~/.ssh
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
 
           printf '%s' "$ORACLE_SSH_KEY_B64" \
             | base64 --decode \
-            > ~/.ssh/aafpn_key
+            > "$HOME/.ssh/aafpn_key"
 
-          chmod 600 ~/.ssh/aafpn_key
+          chmod 600 "$HOME/.ssh/aafpn_key"
 
-          echo "Private key file created."
+          echo "SSH private key decoded."
 
 
-      # ------------------------------------------
-      # Vérifier que la clé privée est valide
-      # ------------------------------------------
+      # -------------------------------------------------
+      # Validation de la clé privée
+      # -------------------------------------------------
       - name: Validate SSH private key
         run: |
+          set -e
+
           echo "======================================"
           echo "VALIDATE SSH PRIVATE KEY"
           echo "======================================"
 
           if ssh-keygen -y \
-            -f ~/.ssh/aafpn_key \
-            > /dev/null 2>&1; then
-
+            -f "$HOME/.ssh/aafpn_key" \
+            > /dev/null 2>&1
+          then
             echo "SSH private key: VALID"
-
           else
-
-            echo "::error::SSH private key is invalid or password protected"
+            echo "::error::SSH private key is invalid"
             exit 1
-
           fi
 
 
-      # ------------------------------------------
-      # Vérifier que le serveur SSH répond
-      # ------------------------------------------
+      # -------------------------------------------------
+      # Vérification du serveur SSH Oracle
+      # -------------------------------------------------
       - name: Scan Oracle SSH host
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
         run: |
+          set -e
+
           echo "======================================"
           echo "SCAN ORACLE SSH HOST"
           echo "======================================"
 
-          if ssh-keyscan \
+          ssh-keyscan \
             -T 15 \
             -p "$ORACLE_PORT" \
             "$ORACLE_HOST" \
-            > ~/.ssh/known_hosts 2>/dev/null; then
+            > "$HOME/.ssh/known_hosts"
 
-            echo "Oracle SSH server found"
-
-          else
-
-            echo "::error::Unable to reach Oracle SSH server"
-            exit 1
-
-          fi
-
-          if [ ! -s ~/.ssh/known_hosts ]; then
-            echo "::error::known_hosts is empty"
+          if [ ! -s "$HOME/.ssh/known_hosts" ]; then
+            echo "::error::Unable to retrieve Oracle SSH host key"
             exit 1
           fi
 
-          chmod 600 ~/.ssh/known_hosts
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+          echo "Oracle SSH host: OK"
 
 
-      # ------------------------------------------
-      # Tester la connexion SSH complète
-      # ------------------------------------------
+      # -------------------------------------------------
+      # Test de connexion Oracle
+      # -------------------------------------------------
       - name: Test Oracle SSH connection
-        env:
-          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-          ORACLE_USER: ${{ secrets.ORACLE_USER }}
-          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
         run: |
+          set -e
+
           echo "======================================"
           echo "TEST ORACLE SSH CONNECTION"
           echo "======================================"
@@ -267,7 +268,7 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o IdentitiesOnly=yes \
-            -i ~/.ssh/aafpn_key \
+            -i "$HOME/.ssh/aafpn_key" \
             -p "$ORACLE_PORT" \
             "$ORACLE_USER@$ORACLE_HOST" \
             "echo 'SSH connection successful' && hostname && whoami && pwd"
