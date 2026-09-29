@@ -102,9 +102,6 @@ jobs:
       - frontend
       - backend
 
-    # Exécution :
-    # - automatiquement après push sur main
-    # - manuellement avec workflow_dispatch sur main
     if: >
       (github.event_name == 'push' &&
        github.ref == 'refs/heads/main') ||
@@ -120,7 +117,6 @@ jobs:
     env:
       ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
       ORACLE_USER: ${{ secrets.ORACLE_USER }}
-      ORACLE_PORT: ${{ secrets.ORACLE_PORT || '22' }}
 
     steps:
 
@@ -158,13 +154,6 @@ jobs:
             exit 1
           fi
 
-          if [ -n "$ORACLE_PORT" ]; then
-            echo "ORACLE_PORT: OK"
-          else
-            echo "::error::ORACLE_PORT is missing"
-            exit 1
-          fi
-
           if [ -n "$ORACLE_SSH_KEY_B64" ]; then
             echo "ORACLE_SSH_KEY_B64: OK"
           else
@@ -172,6 +161,7 @@ jobs:
             exit 1
           fi
 
+          echo "SSH PORT: 22"
           echo "======================================"
           echo "ALL VARIABLES: OK"
           echo "======================================"
@@ -225,7 +215,7 @@ jobs:
 
 
       # -------------------------------------------------
-      # Vérification du serveur SSH Oracle
+      # Scan serveur Oracle
       # -------------------------------------------------
       - name: Scan Oracle SSH host
         run: |
@@ -237,7 +227,7 @@ jobs:
 
           ssh-keyscan \
             -T 15 \
-            -p "$ORACLE_PORT" \
+            -p 22 \
             "$ORACLE_HOST" \
             > "$HOME/.ssh/known_hosts"
 
@@ -252,7 +242,7 @@ jobs:
 
 
       # -------------------------------------------------
-      # Test de connexion Oracle
+      # Test connexion Oracle
       # -------------------------------------------------
       - name: Test Oracle SSH connection
         run: |
@@ -269,6 +259,6 @@ jobs:
             -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o IdentitiesOnly=yes \
             -i "$HOME/.ssh/aafpn_key" \
-            -p "$ORACLE_PORT" \
+            -p 22 \
             "$ORACLE_USER@$ORACLE_HOST" \
             "echo 'SSH connection successful' && hostname && whoami && pwd"
