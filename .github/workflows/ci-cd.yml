@@ -92,7 +92,7 @@ jobs:
 
 
   # =====================================================
-  # DEPLOYMENT
+  # SSH / PRODUCTION CHECK
   # =====================================================
   deploy:
     name: Check Production SSH
@@ -101,64 +101,175 @@ jobs:
       - frontend
       - backend
 
+    # Seulement après un push sur main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
-    env:
-      ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
-      ORACLE_USER: ${{ secrets.ORACLE_USER }}
-      ORACLE_SSH_PORT: ${{ secrets.ORACLE_SSH_PORT || vars.ORACLE_SSH_PORT || '22' }}
+    environment:
+      name: production
 
     steps:
+
+      # ------------------------------------------
+      # Checkout
+      # ------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
+      # ------------------------------------------
+      # Vérifier les secrets
+      # ------------------------------------------
+      - name: Check deployment variables
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          echo "======================================"
+          echo "CHECK DEPLOYMENT VARIABLES"
+          echo "======================================"
+
+          if [ -n "$ORACLE_HOST" ]; then
+            echo "ORACLE_HOST: OK"
+          else
+            echo "::error::ORACLE_HOST is missing"
+            exit 1
+          fi
+
+          if [ -n "$ORACLE_USER" ]; then
+            echo "ORACLE_USER: OK"
+          else
+            echo "::error::ORACLE_USER is missing"
+            exit 1
+          fi
+
+          if [ -n "$ORACLE_PORT" ]; then
+            echo "ORACLE_PORT: OK"
+          else
+            echo "::error::ORACLE_PORT is missing"
+            exit 1
+          fi
+
+          if [ -n "$ORACLE_SSH_KEY" ]; then
+            echo "ORACLE_SSH_KEY: OK"
+          else
+            echo "::error::ORACLE_SSH_KEY is missing"
+            exit 1
+          fi
+
+          echo "All deployment variables are available."
+
+
+      # ------------------------------------------
+      # Préparer la clé SSH
+      # ------------------------------------------
       - name: Configure SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
         run: |
-          set -euo pipefail
-          for variable in SSH_PRIVATE_KEY ORACLE_HOST ORACLE_USER; do
-            if [[ -z "${!variable}" ]]; then
-              echo "::error::Configuration SSH manquante : $variable (SSH_PRIVATE_KEY correspond au secret ORACLE_SSH_KEY)."
-              exit 1
-            fi
-          done
-          if [[ ! "$ORACLE_SSH_PORT" =~ ^[0-9]{1,5}$ ]] || (( 10#$ORACLE_SSH_PORT < 1 || 10#$ORACLE_SSH_PORT > 65535 )); then
-            echo "::error::ORACLE_SSH_PORT doit être un nombre entre 1 et 65535."
-            exit 1
-          fi
-          if [[ "$ORACLE_HOST" == *://* || "$ORACLE_HOST" == *[[:space:]]* || "$ORACLE_HOST" == -* ]]; then
-            echo "::error::ORACLE_HOST doit contenir uniquement une adresse IP ou un nom DNS, sans protocole ni espaces."
-            exit 1
-          fi
+          set -e
+
+          echo "======================================"
+          echo "CONFIGURE SSH"
+          echo "======================================"
+
           mkdir -p ~/.ssh
+
           chmod 700 ~/.ssh
 
-          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/aafpn_key
+          printf '%s\n' "$ORACLE_SSH_KEY" \
+            | tr -d '\r' \
+            > ~/.ssh/aafpn_key
+
           chmod 600 ~/.ssh/aafpn_key
-          if ! ssh-keygen -y -P '' -f ~/.ssh/aafpn_key > /dev/null 2>&1; then
-            echo "::error::ORACLE_SSH_KEY est invalide ou protégée par une phrase secrète. Fournir une clé privée de déploiement utilisable sans interaction."
-            exit 1
-          fi
 
-          if ! ssh-keyscan -T 10 -p "$ORACLE_SSH_PORT" "$ORACLE_HOST" > ~/.ssh/aafpn_known_hosts 2>/dev/null || [[ ! -s ~/.ssh/aafpn_known_hosts ]]; then
-            echo "::error::Impossible de récupérer la clé du serveur SSH. Vérifier ORACLE_HOST, ORACLE_SSH_PORT, le service SSH et les règles réseau Oracle/pare-feu."
-            exit 1
-          fi
-          chmod 600 ~/.ssh/aafpn_known_hosts
+          echo "Private key file created."
 
-      - name: Test Oracle SSH connection
+
+      # ------------------------------------------
+      # Vérifier que la clé privée est valide
+      # ------------------------------------------
+      - name: Validate SSH private key
         run: |
+          echo "======================================"
+          echo "VALIDATE SSH PRIVATE KEY"
+          echo "======================================"
+
+          if ssh-keygen -y \
+            -f ~/.ssh/aafpn_key \
+            > /dev/null 2>&1; then
+
+            echo "SSH private key: VALID"
+
+          else
+
+            echo "::error::SSH private key is invalid or password protected"
+            exit 1
+
+          fi
+
+
+      # ------------------------------------------
+      # Vérifier que le serveur SSH répond
+      # ------------------------------------------
+      - name: Scan Oracle SSH host
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+        run: |
+          echo "======================================"
+          echo "SCAN ORACLE SSH HOST"
+          echo "======================================"
+
+          if ssh-keyscan \
+            -T 15 \
+            -p "$ORACLE_PORT" \
+            "$ORACLE_HOST" \
+            > ~/.ssh/known_hosts 2>/dev/null; then
+
+            echo "Oracle SSH server found"
+
+          else
+
+            echo "::error::Unable to reach Oracle SSH server"
+            exit 1
+
+          fi
+
+          if [ ! -s ~/.ssh/known_hosts ]; then
+            echo "::error::known_hosts is empty"
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+
+
+      # ------------------------------------------
+      # Tester la connexion SSH complète
+      # ------------------------------------------
+      - name: Test Oracle SSH connection
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_PORT: ${{ secrets.ORACLE_PORT }}
+        run: |
+          echo "======================================"
+          echo "TEST ORACLE SSH CONNECTION"
+          echo "======================================"
+
           ssh \
             -o BatchMode=yes \
             -o ConnectTimeout=15 \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="$HOME/.ssh/aafpn_known_hosts" \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
             -o IdentitiesOnly=yes \
             -i ~/.ssh/aafpn_key \
-            -p "$ORACLE_SSH_PORT" \
+            -p "$ORACLE_PORT" \
             "$ORACLE_USER@$ORACLE_HOST" \
             "echo 'SSH connection successful' && hostname && whoami && pwd"
